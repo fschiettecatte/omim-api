@@ -1,7 +1,7 @@
 OMIM API Clinical Synopsis Search Demonstration:
 ================================================
 
-This is a simple HTML/JavaScript demonstration of the use of the [OMIM API](http://omim.org/help/api) 
+This is a simple HTML/JavaScript demonstration of the [OMIM API](http://omim.org/help/api) 
 to search [OMIM](http://omim.org/) Clinical Synopses and render the results in realtime.
 
 To run this demonstration you will need to register for an [OMIM API key](http://omim.org/api) 
