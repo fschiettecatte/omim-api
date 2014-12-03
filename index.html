@@ -3,7 +3,7 @@
 
     <head>
 
-        <title> OMIM API Clinical Synopsis Search Demonstration </title>
+        <title> OMIM API Entry Search Demonstration </title>
 
         <meta contentType-equiv="Content-Type" content="text/html; charset=utf-8" />
 
@@ -58,7 +58,7 @@
                 
                     <tr>
                         <td colspan="2">
-                            <h2> OMIM API Clinical Synopsis Search Demonstration : </h2>
+                            <h2> OMIM API Entry Search Demonstration : </h2>
                         </td>
                     </tr>
             
@@ -140,7 +140,7 @@
     
 // console.log('runOmimEntrySearch ()');
 
-                // OMIM API URL
+                // OMIM API URL to search entries
                 var url = 'http://api.omim.org/api/entry/search';
 
 
@@ -160,7 +160,8 @@
                 }
 
 
-                // Search parameters
+                // Search parameters, note that we want to retrieve the
+                // clinical synopses and the existance flags
                 var include = 'clinicalSynopsis,existFlags'
                 var start   = 0;
                 var limit   = 10;
