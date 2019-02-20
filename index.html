@@ -7,77 +7,717 @@
 
         <meta contentType-equiv="Content-Type" content="text/html; charset=utf-8" />
 
-        <!-- http://jquery.com/ -->
-        <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+        <!-- https://getbootstrap.com/ -->
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
-        <!--  http://qtip2.com/ -->
-        <script type="text/javascript" src="./jquery.qtip.min.js"></script>
-        <link rel="stylesheet" type="text/css" href="./jquery.qtip.min.css" />
+        <!-- http://jquery.com/ , https://cdnjs.com/libraries/jquery-->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
 
-        <style>
-            body {
-                font-family: 'Helvetica Neue', 'Lucida Sans', 'Lucida Grande', 'Gill Sans', Helvetica, Geneva, Arial, Verdana, sans-serif;
-                font-size: 100%;
-                color: #363636;
-                background-color: white;
-                font-weight: normal;
-                line-height: 1.6em;
-            }
+        <!-- https://getbootstrap.com/ , https://cdnjs.com/libraries/twitter-bootstrap/ -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/js/bootstrap.bundle.js" integrity="sha256-pVreZ67fRaATygHF6T+gQtF1NI700W9kzeAivu6au9U=" crossorigin="anonymous"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.3.1/css/bootstrap.css" integrity="sha256-Nfu23DiRqsrx/6B6vsI0T9vEVKq1M6KgO8+TV363g3s=" crossorigin="anonymous" />
 
-            table {
-                padding: 0;
-                border-spacing: 0;
-            }
+        <script type="text/javascript">
 
-            a {
-                color: #038ACA;
-                text-decoration: none;
-            }
+            $(document).ready(function(){
 
-            a:hover {
-                color: #038ACA;
-                text-decoration: underline;
-            }
 
-            a:visited {
-                color: #038ACA;
-                text-decoration: none;
-            }
-        </style>
+                // Clinical synopsis text filter
+                function clinicalSynopsisTextFilter(clinicalSynopsisText) {
 
+// console.log('clinicalSynopsisText (in): [' + clinicalSynopsisText + ']');
+
+                    // Process text
+                    if ( clinicalSynopsisText ) {
+
+                        // Clean up & mark up features
+                        clinicalSynopsisText = clinicalSynopsisText
+                            // {174000} =>  <a href="https://omim.org/entry/174000">174000</a>
+                            .replace(/\{(\d{6})\}/g, '<a href="https://omim.org/entry/$1">$1</a>')
+                            // {174000.0001} =>  <a href="https://omim.org/entry/174000#0001">174000.0001</a>
+                            .replace(/\{(\d{6})\.(\d{4})\}/g, '<a href="https://omim.org/entry/$1#$2">$1.$2</a>')
+                            // Apply the semi-colon to '<br />' filter
+                            .replace(/;/g, '<br/>')
+                            // Filter numbers
+                            .replace(/\{(SNOMEDCT:|ICD10CM:|ICD9CM:|UMLS\s|HPO\s|EOM ID:).*?\}/g, '');
+
+                        // Escape thingies
+                        clinicalSynopsisText = clinicalSynopsisText
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;');
+                    }
+
+// console.log('clinicalSynopsisText (out): [' + clinicalSynopsisText + ']');
+
+                    return (clinicalSynopsisText);
+
+                }
+
+
+
+                // Run the OMIM search when we type in the search box
+                $("#search").keyup(function(event){
+                    runOmimEntrySearch();
+                });
+
+                // Run the OMIM search when we select an inheritance
+                $("#inheritance").change(function(){
+                    runOmimEntrySearch();
+                });
+
+                // Run the OMIM search when we submit it
+                $("#submit").click(function(){
+                    runOmimEntrySearch();
+                });
+
+
+
+                // Add an entry to the features selected
+                function runOmimEntrySearch() {
+
+// console.log('runOmimEntrySearch ()');
+
+                    // OMIM API URL to search entries
+                    var url = 'https://api.omim.org/api/entry/search';
+
+
+                    // OMIM API key which you can get from:
+                    //
+                    //  https://omim.org/api
+                    //  https://omim.org/help/api
+                    //
+                    var apiKey  = null;
+
+                    // In case the OMIM API key is not set
+                    if ( !apiKey ) {
+                        $('.csHeading').popover('dispose');
+                        $('#results').empty();
+                        $('#results').append('<div class="col-12 mt-3"><div class="alert alert-danger text-center" role="alert">The OMIM API key is not set, you can get one <a href="https://omim.org/api" target="_blank"> here </a> and you need to add it to the index.html file (line 64)</div></div>');
+                        return;
+                    }
+
+
+                    // Search parameters, note that we want to retrieve the
+                    // clinical synopses and the existance flags
+                    var include = 'clinicalSynopsis,existFlags'
+                    var start   = 0;
+                    var limit   = 10;
+                    var sort    = 'score desc';
+                    var format  = 'jsonp';
+
+
+                    // Get the search and the inheritance
+                    var search = $('#search').val();
+                    var inheritance = $('#inheritance').val();
+// console.log('search: [' + search + ']');
+// console.log('inheritance: [' + inheritance + ']');
+
+                    // Clear the results if there is no search and no inheritance
+                    if ( !search && !inheritance ) {
+                        $('.csHeading').popover('dispose');
+                        $('#results').empty();
+                        return;
+                    }
+
+
+                    // Filter on specific OMIM entries (we are searching clinical synopses only
+                    var filter = 'prefix:(# % none)';
+
+                    // Append the inheritance to the filter
+                    if ( inheritance != '' ) {
+                        filter += ' AND (cs_inheritance:"' + inheritance + '" OR cs_inheritance_exists:false)';
+                    }
+
+                    // Set the filter on the form
+                    $('#filter').val(filter);
+
+// console.log('filter: [' + filter + ']');
+
+
+                    // Ajax call
+                    $.ajax({
+
+                        // The url
+                        url: url,
+
+                        // The name of the callback parameter
+                        jsonp: 'callback',
+
+                        // Tell jQuery we're expecting JSONP
+                        dataType: 'jsonp',
+
+                        // Tell the OMIM API what we want
+                        data: {
+                            search:  search,
+                            filter:  filter,
+                            include: include,
+                            start:   start,
+                            limit:   limit,
+                            sort:    sort,
+                            format:  format,
+                            apiKey:  apiKey
+                        },
+
+                        // Handle response
+                        success: function( jsonObject ) {
+                            omimResponse(jsonObject);
+                        },
+
+                        // Handle error
+                        error: function( jsonObject,  textStatus, errorThrown ) {
+                            $('.csHeading').popover('dispose');
+                            $('#results').empty();
+                        }
+                    });
+
+                }
+
+
+                // Process the omim response
+                function omimResponse(jsonObject) {
+
+// console.log('omimResponse ()');
+
+                    var omim = jsonObject.omim;
+// console.log('omim: [' + omim.version + ']');
+
+                    // Check for a soft error
+                    if ( omim.error ) {
+                        $('.csHeading').popover('dispose');
+                        $('#results').empty();
+                        return;
+                    }
+
+
+                    // Dereference the search response for convenience
+                    var searchResponse = omim.searchResponse;
+
+                    // Result array
+                    var resultArray = [];
+
+                    // Loop over the entries in the search response
+                    for ( var i = 0; i < searchResponse.entryList.length; i++ ) {
+
+                        // Result item array
+                        var resultItemArray = [];
+
+                        // Dereference the entry for convenience
+                        var entry = searchResponse.entryList[i].entry;
+
+                        // Process if a clinical synopsis exists
+                        if ( entry.clinicalSynopsisExists ) {
+
+                            // Dereference the clinical synopsis for convenience
+                            var clinicalSynopsis = entry.clinicalSynopsis;
+
+                            // Old format clinical synopsis, can't do too much with them
+                            if ( clinicalSynopsis.oldFormatExists ) {
+
+                                for ( var key in clinicalSynopsis.oldFormat ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.oldFormat[key]) + '">' + key + '</a>');
+                                }
+
+                            }
+
+                            // New format clinical synopsis, shiny, shiny...
+                            else {
+
+                                if ( clinicalSynopsis.inheritanceExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.inheritance) + '">Inheritance</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.growthExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.growth ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.growth);
+                                    }
+
+                                    if ( clinicalSynopsis.growthHeight ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.growthHeight);
+                                    }
+
+                                    if ( clinicalSynopsis.growthWeight ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.growthWeight);
+                                    }
+
+                                    if ( clinicalSynopsis.growthOther ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.growthOther);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Growth</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.headAndNeckExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.headAndNeck ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeck);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckHead ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckHead);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckFace ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckFace);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckEars ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckEars);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckEyes ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckEyes);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckNose ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckNose);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckMouth ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckMouth);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckTeeth ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckTeeth);
+                                    }
+
+                                    if ( clinicalSynopsis.headAndNeckNeck ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckNeck);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Head & Neck</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.cardiovascularExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.cardiovascular ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.cardiovascular);
+                                    }
+
+                                    if ( clinicalSynopsis.cardiovascularHeart ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.cardiovascularHeart);
+                                    }
+
+                                    if ( clinicalSynopsis.cardiovascularVascular ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.cardiovascularVascular);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Cardiovascular</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.respiratoryExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.respiratory ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.respiratory);
+                                    }
+
+                                    if ( clinicalSynopsis.respiratoryNasopharynx ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryNasopharynx);
+                                    }
+
+                                    if ( clinicalSynopsis.respiratoryLarynx ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryLarynx);
+                                    }
+
+                                    if ( clinicalSynopsis.respiratoryAirways ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryAirways);
+                                    }
+
+                                    if ( clinicalSynopsis.respiratoryLung ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryLung);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Respiratory</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.chestExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.chest ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.chest);
+                                    }
+
+                                    if ( clinicalSynopsis.chestExternalFeatures ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.chestExternalFeatures);
+                                    }
+
+                                    if ( clinicalSynopsis.chestRibsSternumClaviclesAndScapulae ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.chestRibsSternumClaviclesAndScapulae);
+                                    }
+
+                                    if ( clinicalSynopsis.chestBreasts ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.chestBreasts);
+                                    }
+
+                                    if ( clinicalSynopsis.chestDiaphragm ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.chestDiaphragm);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Chest</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.abdomenExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.abdomen ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomen);
+                                    }
+
+                                    if ( clinicalSynopsis.abdomenExternalFeatures ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenExternalFeatures);
+                                    }
+
+                                    if ( clinicalSynopsis.abdomenLiver ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenLiver);
+                                    }
+
+                                    if ( clinicalSynopsis.abdomenPancreas ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenPancreas);
+                                    }
+
+                                    if ( clinicalSynopsis.abdomenBiliaryTract ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenBiliaryTract);
+                                    }
+
+                                    if ( clinicalSynopsis.abdomenSpleen ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenSpleen);
+                                    }
+
+                                    if ( clinicalSynopsis.abdomenGastrointestinal ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenGastrointestinal);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Abdomen</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.genitourinaryExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.genitourinary ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinary);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryExternalGenitaliaMale ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryExternalGenitaliaMale);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryExternalGenitaliaFemale ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryExternalGenitaliaFemale);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryInternalGenitaliaMale ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryInternalGenitaliaMale);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryInternalGenitaliaFemale ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryInternalGenitaliaFemale);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryKidneys ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryKidneys);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryUreters ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryUreters);
+                                    }
+
+                                    if ( clinicalSynopsis.genitourinaryBladder ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryBladder);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Genitourinary</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.skeletalExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.skeletal ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletal);
+                                    }
+
+                                    if ( clinicalSynopsis.skeletalSkull ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalSkull);
+                                    }
+
+                                    if ( clinicalSynopsis.skeletalSpine ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalSpine);
+                                    }
+
+                                    if ( clinicalSynopsis.skeletalPelvis ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalPelvis);
+                                    }
+
+                                    if ( clinicalSynopsis.skeletalLimbs ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalLimbs);
+                                    }
+
+                                    if ( clinicalSynopsis.skeletalHands ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalHands);
+                                    }
+
+                                    if ( clinicalSynopsis.skeletalFeet ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalFeet);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Skeletal</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.skinNailsHairExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.skinNailsHair ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHair);
+                                    }
+
+                                    if ( clinicalSynopsis.skinNailsHairSkin ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairSkin);
+                                    }
+
+                                    if ( clinicalSynopsis.skinNailsHairSkinHistology ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairSkinHistology);
+                                    }
+
+                                    if ( clinicalSynopsis.skinNailsHairSkinElectronMicroscopy ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairSkinElectronMicroscopy);
+                                    }
+
+                                    if ( clinicalSynopsis.skinNailsHairNails ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairNails);
+                                    }
+
+                                    if ( clinicalSynopsis.skinNailsHairHair ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairHair);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Skin, nails & hair</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.muscleSoftTissueExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.muscleSoftTissue) + '">Muscle, soft tissues</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.neurologicExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.neurologic ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.neurologic);
+                                    }
+
+                                    if ( clinicalSynopsis.neurologicCentralNervousSystem ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.neurologicCentralNervousSystem);
+                                    }
+
+                                    if ( clinicalSynopsis.neurologicPeripheralNervousSystem ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.neurologicPeripheralNervousSystem);
+                                    }
+
+                                    if ( clinicalSynopsis.neurologicBehavioralPsychiatricManifestations ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.neurologicBehavioralPsychiatricManifestations);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Neurologic</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.voiceExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.voice) + '">Voice</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.metabolicFeaturesExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.metabolicFeatures) + '">Metabolic features</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.endocrineFeaturesExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.endocrineFeatures) + '">Endocrine features</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.hematologyExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.hematology) + '">Hematology</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.immunologyExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.immunology) + '">Immunology</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.neoplasiaExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.neoplasia) + '">Neoplasia</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.prenatalManifestationsExists ) {
+
+                                    var dataContent = '';
+
+                                    if ( clinicalSynopsis.prenatalManifestations ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestations);
+                                    }
+
+                                    if ( clinicalSynopsis.prenatalManifestationsMovement ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsMovement);
+                                    }
+
+                                    if ( clinicalSynopsis.prenatalManifestationsAmnioticFluid ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsAmnioticFluid);
+                                    }
+
+                                    if ( clinicalSynopsis.prenatalManifestationsPlacentaAndUmbilicalCord ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsPlacentaAndUmbilicalCord);
+                                    }
+
+                                    if ( clinicalSynopsis.prenatalManifestationsMaternal ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsMaternal);
+                                    }
+
+                                    if ( clinicalSynopsis.prenatalManifestationsDelivery ) {
+                                       dataContent += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsDelivery);
+                                    }
+
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + dataContent + '">Prenatal manifestations</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.laboratoryAbnormalitiesExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.laboratoryAbnormalities) + '">Laboratory abnormalities</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.miscellaneousExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.miscellaneous) + '">Miscellaneous</a>');
+                                }
+
+
+                                if ( clinicalSynopsis.molecularBasisExists ) {
+                                    resultItemArray.push('<a class="csHeading text-nowrap" data-container="body" data-toggle="popover" data-content="' + clinicalSynopsisTextFilter(clinicalSynopsis.molecularBasis) + '">Molecular basis</a>');
+                                }
+
+                            }
+                        }
+
+                        // Add the clinical synopsis title to the result
+                        var result = '<div class="row mt-3"><div class="col-12"><a href="https://omim.org/entry/' + entry.mimNumber + '" target="_blank">' + entry.mimNumber + '</a> - ' + entry.titles.preferredTitle;
+
+                        // Add the result items to the result
+                        if ( resultItemArray.length > 0 ) {
+                            result += '<br/><span class="text-muted">' + resultItemArray.join('; ') + '.</span>';
+                        }
+
+                        // Close off the result
+                        result += '</div></div>';
+
+                        // Add the result to the result array
+                        resultArray.push(result);
+                    }
+
+
+                    // Dispose of the popovers and empty the results
+                    $('.csHeading').popover('dispose');
+                    $('#results').empty();
+
+                    // Set the results
+                    if ( resultArray.length > 0 ) {
+                        $('#results').append(resultArray.join(' '));
+                    }
+                    else {
+                        $('#results').append('<div class="col-10 mt-5"><div class="text-muted text-center"> No Results... </div></div>');
+                    }
+
+                    // Enable the popovers
+                    $('.csHeading').popover({
+                        trigger: 'manual',
+                        placement: 'bottom',
+                        html: true
+                    }).on('mouseenter', function() {
+                        var _this = this;
+                        $(this).popover('show');
+                        $('.popover').on('mouseleave', function() {
+                            $(_this).popover('hide');
+                        });
+                    }).on('mouseleave', function() {
+                        var _this = this;
+                        setTimeout(function() {
+                            if (!$('.popover:hover').length) {
+                                $(_this).popover('hide')
+                            }
+                        }, 100);
+                    });
+
+                }
+
+            });
+
+        </script>
 
     </head>
 
     <body>
 
         <div id="body">
-            
-            <div id="controls">
-            
-                <table>
-                
-                    <tr>
-                        <td colspan="2">
-                            <h2> OMIM API Entry Search Demonstration : </h2>
-                        </td>
-                    </tr>
-            
-                    <tr>
-                        <td>
-                            Search : 
-                        </td>
-                        <td>
-                            <input name="search" size="60" type="text" id="search" autcomplete="off">
-                        </td>
-                    </tr>
-            
-                    <tr>
-                        <td>
-                            Inheritance Pattern :
-                        </td>
-                        <td>
 
-                            <select name="inheritance" id="inheritance">
+            <div class="container">
+
+                <div id="controls">
+
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h2>
+                                OMIM API Entry Search Demonstration :
+                            </h2>
+                        </div>
+                    </div>
+
+                    <div class="form-group row mt-3">
+                        <label class="col-2 col-form-label text-nowrap">
+                            Search :
+                        </label>
+                        <div class="col-md-8">
+                            <div class="input-group">
+                                <input type="search" id="search" name="search" class="form-control" placeholder="OMIM search..." autofocus />
+                                <div class="input-group-append">
+                                    <button type="submit" id="submit" class="btn btn-primary"> &nbsp;&nbsp; Search &nbsp;&nbsp; </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group row">
+                        <label class="col-2 col-form-label text-nowrap">
+                            Inheritance Pattern :
+                        </label>
+                        <div class="col-8">
+                            <select id="inheritance" name="inheritance" class="form-control custom-select">
                                 <option value="">Select optional inheritance pattern...</option>
                                 <option value="Autosomal dominant">Autosomal dominant</option>
                                 <option value="Autosomal recessive">Autosomal recessive</option>
@@ -86,746 +726,31 @@
                                 <option value="Y-linked">Y-linked</option>
                                 <option value="Isolated cases">Isolated cases</option>
                                 <option value="Uncertain, see pedigree">Uncertain, see pedigree</option>
-                            </select>            
-                        </td>
-                    </tr>
-            
-                      <tr>
-                        <td>
-                        </td>
-                        <td>
-                            <input value="Search" type="submit" id="submit">
-                        </td>
-                    </tr>
-            
-                </table>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group row mt-3">
+                        <label class="col-2 col-form-label text-nowrap">
+                            Filter :
+                        </label>
+                        <div class="col-md-8">
+                            <input type="text" id="filter" name="filter" class="form-control" readonly />
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="row mt-3">
+                </div>
+
+                <div id="results">
+
+                </div>
 
             </div>
-
-
-            <div id="spacer">
-                <br/>
-            </div>
-
-
-            <div id="results">
-
-            </div>
-
 
         </div>
-
-
-        <script type="text/javascript">
-
-            // Run the OMIM search when we type in the search box
-            $("#search").keyup(function(event){
-                runOmimEntrySearch();
-            });
-
-            // Run the OMIM search when we select an inheritance
-            $("#inheritance").change(function(){
-                runOmimEntrySearch();
-            });
-
-            // Run the OMIM search when we submit it
-            $("#submit").click(function(){
-                runOmimEntrySearch();
-            });
-
-
-
-            // Add an entry to the features selected
-            function runOmimEntrySearch() {
-    
-// console.log('runOmimEntrySearch ()');
-
-                // OMIM API URL to search entries
-                var url = 'http://api.omim.org/api/entry/search';
-
-
-                // OMIM API key which you can get from:
-                //
-                //  http://omim.org/api
-                //  http://omim.org/help/api
-                //
-                var apiKey  = null;
-
-                // In case the OMIM API key is not set
-                if ( !apiKey ) {
-                    $("#results > br").remove();
-                    $("#results > li").remove();
-                    $("#results").append('<li>The OMIM API key is not set, you can get one <a href="http://omim.org/api"> here </a> and you need to add it to the index.html file (line 152)</li>');
-                    return;
-                }
-
-
-                // Search parameters, note that we want to retrieve the
-                // clinical synopses and the existance flags
-                var include = 'clinicalSynopsis,existFlags'
-                var start   = 0;
-                var limit   = 10;
-                var sort    = 'score desc';
-                var format  = 'jsonp';
-                
-
-                // Get the search and the inheritance
-                var search = $('#search').val();
-                var inheritance = $('#inheritance').val();
-// console.log('search: [' + search + ']');
-// console.log('inheritance: [' + inheritance + ']');
-                
-                // Clear the results if there is no search and no inheritance
-                if ( !search && !inheritance ) {
-                    $("#results > br").remove();
-                    $("#results > li").remove();
-                    return;
-                }
-                
-                
-                // Filter on specific OMIM entries (we are searching clinical synopses only
-                var filter = 'prefix:(# % none)';
-                
-                // Append the inheritance to the filter
-                if ( inheritance != '' ) {
-                    filter += ' AND (cs_inheritance:"' + inheritance + '" OR cs_inheritance_exists:false)';
-                }
-// console.log('filter: [' + filter + ']');
-
-
-                // Ajax call
-                $.ajax({
-                    
-                    // The url
-                    url: url,
- 
-                    // The name of the callback parameter
-                    jsonp: "callback",
- 
-                    // Tell jQuery we're expecting JSONP
-                    dataType: "jsonp",
- 
-                    // Tell the OMIM API what we want
-                    data: {
-                        search:  search,
-                        filter:  filter,
-                        include: include,
-                        start:   start,
-                        limit:   limit,
-                        sort:    sort,
-                        format:  format,
-                        apiKey:  apiKey
-                    },
- 
-                    // Handle response
-                    success: function( jsonObject ) {
-                        omimResponse(jsonObject); 
-                    },
-                    
-                    // Handle error
-                    error: function( jsonObject,  textStatus, errorThrown ) {
-                        $("#results > br").remove();
-                        $("#results > li").remove();
-                    }
-                });
-
-            }
-
-
-            // Process the omim response
-            function omimResponse(jsonObject) {
-
-// console.log('omimResponse ()');
-
-                var omim = jsonObject.omim;
-// console.log('omim: [' + omim.version + ']');
-
-                // Check for a soft error
-                if ( omim.error ) {
-                    $("#results > br").remove();
-                    $("#results > li").remove();
-                    return;
-                }
-
-
-                // Dereference the search response for convenience
-                var searchResponse = omim.searchResponse;
-
-                // OMIM results for the display
-                var omimResults = '';
-
-                // Loop over the entries in the search response
-                for ( var i = 0; i < searchResponse.entryList.length; i++ ) {
-
-                    // Dereference the entry for convenience
-                    var entry = searchResponse.entryList[i].entry;
-
-                    // OMIM result for the display
-                    omimResult = '';
-    
-                    // Process if a clinical synopsis exists
-                    if ( entry.clinicalSynopsisExists ) {
-    
-                        // Dereference the clinical synopsis for convenience
-                        var clinicalSynopsis = entry.clinicalSynopsis;
-        
-                        // Old format clinical synopsis, can't do too much with them
-                        if ( clinicalSynopsis.oldFormatExists ) {
-
-                            for ( var key in clinicalSynopsis.oldFormat ) {
-                                omimResult += '<a href="#" class="definition" title="' + clinicalSynopsisTextFilter(clinicalSynopsis.oldFormat[key]) + '">' + key + '</a>, ';
-                            }
-
-                        }
-        
-                        // New format clinical synopsis, shiny, shiny...
-                        else {
-
-                            if ( clinicalSynopsis.inheritanceExists ) {
-                                omimResult += '<a href="#" class="definition" title="' + clinicalSynopsisTextFilter(clinicalSynopsis.inheritance) + '">Inheritance</a>, ';
-                            }
-
-                            if ( clinicalSynopsis.growthExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.growth ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.growth);
-                                }
-        
-                                if ( clinicalSynopsis.growthHeight ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.growthHeight);
-                                }
-        
-                                if ( clinicalSynopsis.growthWeight ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.growthWeight);
-                                }
-        
-                                if ( clinicalSynopsis.growthOther ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.growthOther);
-                                }
-        
-                                omimResult += '">Growth</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.headAndNeckExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.headAndNeck ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeck);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckHead ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckHead);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckFace ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckFace);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckEars ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckEars);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckEyes ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckEyes);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckNose ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckNose);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckMouth ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckMouth);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckTeeth ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckTeeth);
-                                }
-        
-                                if ( clinicalSynopsis.headAndNeckNeck ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.headAndNeckNeck);
-                                }
-        
-                                omimResult += '">Head & Neck</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.cardiovascularExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.cardiovascular ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.cardiovascular);
-                                }
-        
-                                if ( clinicalSynopsis.cardiovascularHeart ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.cardiovascularHeart);
-                                }
-        
-                                if ( clinicalSynopsis.cardiovascularVascular ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.cardiovascularVascular);
-                                }
-        
-                                omimResult += '">Cardiovascular</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.respiratoryExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.respiratory ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.respiratory);
-                                }
-        
-                                if ( clinicalSynopsis.respiratoryNasopharynx ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryNasopharynx);
-                                }
-        
-                                if ( clinicalSynopsis.respiratoryLarynx ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryLarynx);
-                                }
-        
-                                if ( clinicalSynopsis.respiratoryAirways ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryAirways);
-                                }
-        
-                                if ( clinicalSynopsis.respiratoryLung ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.respiratoryLung);
-                                }
-        
-                                omimResult += '">Respiratory</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.chestExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.chest ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.chest);
-                                }
-        
-                                if ( clinicalSynopsis.chestExternalFeatures ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.chestExternalFeatures);
-                                }
-        
-                                if ( clinicalSynopsis.chestRibsSternumClaviclesAndScapulae ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.chestRibsSternumClaviclesAndScapulae);
-                                }
-        
-                                if ( clinicalSynopsis.chestBreasts ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.chestBreasts);
-                                }
-        
-                                if ( clinicalSynopsis.chestDiaphragm ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.chestDiaphragm);
-                                }
-        
-                                omimResult += '">Chest</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.abdomenExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.abdomen ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomen);
-                                }
-        
-                                if ( clinicalSynopsis.abdomenExternalFeatures ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenExternalFeatures);
-                                }
-        
-                                if ( clinicalSynopsis.abdomenLiver ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenLiver);
-                                }
-        
-                                if ( clinicalSynopsis.abdomenPancreas ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenPancreas);
-                                }
-        
-                                if ( clinicalSynopsis.abdomenBiliaryTract ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenBiliaryTract);
-                                }
-        
-                                if ( clinicalSynopsis.abdomenSpleen ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenSpleen);
-                                }
-        
-                                if ( clinicalSynopsis.abdomenGastrointestinal ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.abdomenGastrointestinal);
-                                }
-        
-                                omimResult += '">Abdomen</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.genitourinaryExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.genitourinary ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinary);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryExternalGenitaliaMale ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryExternalGenitaliaMale);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryExternalGenitaliaFemale ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryExternalGenitaliaFemale);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryInternalGenitaliaMale ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryInternalGenitaliaMale);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryInternalGenitaliaFemale ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryInternalGenitaliaFemale);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryKidneys ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryKidneys);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryUreters ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryUreters);
-                                }
-        
-                                if ( clinicalSynopsis.genitourinaryBladder ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.genitourinaryBladder);
-                                }
-        
-                                omimResult += '">Genitourinary</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.skeletalExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.skeletal ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletal);
-                                }
-        
-                                if ( clinicalSynopsis.skeletalSkull ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalSkull);
-                                }
-        
-                                if ( clinicalSynopsis.skeletalSpine ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalSpine);
-                                }
-        
-                                if ( clinicalSynopsis.skeletalPelvis ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalPelvis);
-                                }
-        
-                                if ( clinicalSynopsis.skeletalLimbs ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalLimbs);
-                                }
-        
-                                if ( clinicalSynopsis.skeletalHands ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalHands);
-                                }
-        
-                                if ( clinicalSynopsis.skeletalFeet ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skeletalFeet);
-                                }
-        
-                                omimResult += '">Skeletal</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.skinNailsHairExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.skinNailsHair ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHair);
-                                }
-        
-                                if ( clinicalSynopsis.skinNailsHairSkin ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairSkin);
-                                }
-        
-                                if ( clinicalSynopsis.skinNailsHairSkinHistology ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairSkinHistology);
-                                }
-        
-                                if ( clinicalSynopsis.skinNailsHairSkinElectronMicroscopy ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairSkinElectronMicroscopy);
-                                }
-        
-                                if ( clinicalSynopsis.skinNailsHairNails ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairNails);
-                                }
-        
-                                if ( clinicalSynopsis.skinNailsHairHair ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.skinNailsHairHair);
-                                }
-        
-                                omimResult += '">Skin, nails & hair</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.muscleSoftTissueExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.muscleSoftTissue ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.muscleSoftTissue);
-                                }
-        
-                                omimResult += '">Muscle, soft tissues</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.neurologicExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.neurologic ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.neurologic);
-                                }
-        
-                                if ( clinicalSynopsis.neurologicCentralNervousSystem ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.neurologicCentralNervousSystem);
-                                }
-        
-                                if ( clinicalSynopsis.neurologicPeripheralNervousSystem ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.neurologicPeripheralNervousSystem);
-                                }
-        
-                                if ( clinicalSynopsis.neurologicBehavioralPsychiatricManifestations ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.neurologicBehavioralPsychiatricManifestations);
-                                }
-        
-                                omimResult += '">Neurologic</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.voiceExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.voice ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.voice);
-                                }
-        
-                                omimResult += '">Voice</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.metabolicFeaturesExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.metabolicFeatures ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.metabolicFeatures);
-                                }
-        
-                                omimResult += '">Metabolic features</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.endocrineFeaturesExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.endocrineFeatures ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.endocrineFeatures);
-                                }
-        
-                                omimResult += '">Endocrine features</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.hematologyExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.hematology ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.hematology);
-                                }
-        
-                                omimResult += '">Hematology</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.immunologyExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.immunology ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.immunology);
-                                }
-        
-                                omimResult += '">Immunology</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.neoplasiaExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.neoplasia ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.neoplasia);
-                                }
-        
-                                omimResult += '">Neoplasia</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.prenatalManifestationsExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.prenatalManifestations ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestations);
-                                }
-        
-                                if ( clinicalSynopsis.prenatalManifestationsMovement ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsMovement);
-                                }
-        
-                                if ( clinicalSynopsis.prenatalManifestationsAmnioticFluid ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsAmnioticFluid);
-                                }
-        
-                                if ( clinicalSynopsis.prenatalManifestationsPlacentaAndUmbilicalCord ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsPlacentaAndUmbilicalCord);
-                                }
-        
-                                if ( clinicalSynopsis.prenatalManifestationsMaternal ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsMaternal);
-                                }
-        
-                                if ( clinicalSynopsis.prenatalManifestationsDelivery ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.prenatalManifestationsDelivery);
-                                }
-        
-                                omimResult += '">Prenatal manifestations</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.laboratoryAbnormalitiesExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.laboratoryAbnormalities ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.laboratoryAbnormalities);
-                                }
-        
-                                omimResult += '">Laboratory abnormalities</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.miscellaneousExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.miscellaneous ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.miscellaneous);
-                                }
-        
-                                omimResult += '">Miscellaneous</a>, ';
-                            }
-
-
-                            if ( clinicalSynopsis.molecularBasisExists ) {
-                                omimResult += '<a href="#" class="definition" title="';
-        
-                                if ( clinicalSynopsis.molecularBasis ) {
-                                    omimResult += clinicalSynopsisTextFilter(clinicalSynopsis.molecularBasis);
-                                }
-        
-                                omimResult += '">Molecular basis</a>, ';
-                            }
-
-                        }
-                    }
-
-                    // Add the clinical synopsis title to the OMIM results
-                    omimResults += '<li><a href="http://omim.org/entry/' + entry.mimNumber + '" target="_blank">' + entry.mimNumber + '</a> - ' + entry.titles.preferredTitle;
-
-                    // Add the OMIM result to the OMIM results
-                    if ( omimResult != '' ) {
-                        omimResults += '<br/>&nbsp;&nbsp;&nbsp;' + omimResult;
-                    }
-                    
-                    // And close off the OMIM result
-                    omimResults += '</li><br/>';
-
-                }
-
-
-                // In case we have no results
-                if ( omimResults == '' ) {
-                    omimResults += '<li>No Results</li>';
-                }
-
-
-                // Clear the current results
-                $("#results > br").remove();
-                $("#results > li").remove();
-
-                
-                // And append in the new results
-                $("#results").append(omimResults);
-
-
-                // Notice the use of the each() method to acquire access to each elements attributes
-                $('.definition').qtip({
-                    position: {
-                        adjust: {
-                            method: "flip flip"
-                        },
-                        at: "bottom center",
-                        my: "top center",
-                        viewport: $(window)
-                    },
-                    style: {
-                        classes: "qtip-green qtip-shadow qtip-rounded",
-                        width: {
-                            min:  270,
-                            max:  400
-                        },
-                    },
-                    show: {
-                        delay: 140,
-                        solo: true
-                    },
-                    hide: {
-                        fixed: true,
-                        delay: 1000
-                    }
-                });
-
-            }
-
-
-
-            // Clinical synopsis text filter
-            function clinicalSynopsisTextFilter(clinicalSynopsisText) {
-
-                // No text so just return
-                if ( !clinicalSynopsisText ) {
-                    return (clinicalSynopsisText);
-                }
-        
-// console.log('clinicalSynopsisText (in): [' + clinicalSynopsisText + ']');
-
-                // {174000}            =>  <a href="/entry/174000">174000</a>
-                clinicalSynopsisText = clinicalSynopsisText.replace(/\{(\d{6})\}/g, '<a href="http://omim.org/entry/$1">$1</a>');
-
-                // {174000.0001}        =>  <a href="/entry/174000#0001">174000.0001</a>
-                clinicalSynopsisText = clinicalSynopsisText.replace(/\{(\d{6})\.(\d{4})\}/g, '<a href="http://omim.org/entry/$1#$2">$1.$2</a>');
-
-                // Apply the semi-colon to '<br />' filter
-                clinicalSynopsisText = clinicalSynopsisText.replace(/;/g, '<br/>') + '<br />';
-
-                // Filter HPO numbers
-                clinicalSynopsisText = clinicalSynopsisText.replace(/\{(SNOMEDCT|ICD10CM|ICD9CM|UMLS|HPO HP|EOM ID):.*?\}/g, '');
-
-        
-                clinicalSynopsisText = clinicalSynopsisText.replace(/&/g, '&amp;');
-                clinicalSynopsisText = clinicalSynopsisText.replace(/</g, '&lt;');
-                clinicalSynopsisText = clinicalSynopsisText.replace(/>/g, '&gt;');
-                clinicalSynopsisText = clinicalSynopsisText.replace(/"/g, '&quot;');
-
-// console.log('clinicalSynopsisText (out): [' + clinicalSynopsisText + ']');
-
-                return (clinicalSynopsisText);
-    
-            }
-
-        </script>
-
 
     </body>
 
